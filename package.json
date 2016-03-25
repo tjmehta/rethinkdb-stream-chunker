@@ -1,0 +1,47 @@
+{
+  "name": "rethinkdb-stream-chunker",
+  "version": "0.0.0",
+  "description": "Chunk RethinkDB protocol stream into query or response buffers",
+  "main": "index.js",
+  "directories": {
+    "test": "test"
+  },
+  "scripts": {
+    "test": "istanbul cover _mocha ./test && istanbul --text check-coverage --statements 100 --functions 100 --branches 100 --lines 100",
+    "test-watch": "nodemon -x mocha ./test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tjmehta/rethinkdb-stream-chunker.git"
+  },
+  "keywords": [
+    "rethinkdb",
+    "stream",
+    "chunker",
+    "chunks",
+    "protocol",
+    "ast",
+    "query",
+    "response"
+  ],
+  "author": "Tejesh Mehta",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/tjmehta/rethinkdb-stream-chunker/issues"
+  },
+  "homepage": "https://github.com/tjmehta/rethinkdb-stream-chunker",
+  "devDependencies": {
+    "istanbul": "^0.4.2",
+    "mocha": "^2.4.5",
+    "rethinkdb": "^2.2.2",
+    "sinon": "^1.17.3"
+  },
+  "dependencies": {
+    "101": "^1.5.0",
+    "buffer-splice": "^1.0.0",
+    "chai": "^3.5.0",
+    "propagate": "^0.4.0",
+    "shimmer": "^1.1.0",
+    "through2": "^2.0.1"
+  }
+}
