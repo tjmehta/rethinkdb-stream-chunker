@@ -149,7 +149,7 @@ StreamChunker.prototype.insertAst = function (tokenBuf, ast, cb) {
   assert(typeof ast === 'object', '"ast" must be an array or object')
   var str = JSON.stringify(ast)
   var lenBuf = new Buffer(4)
-  lenBuf.writeUInt32LE(str.length)
+  lenBuf.writeUInt32LE(str.length, 0)
   var contentBuf = new Buffer(str)
   return this.insertChunk(Buffer.concat([tokenBuf, lenBuf, contentBuf]), cb)
 }
