@@ -1,4 +1,4 @@
-# rethinkdb-stream-chunker
+# rethinkdb-stream-chunker [![Build Status](https://travis-ci.org/tjmehta/rethinkdb-stream-chunker.svg)](https://travis-ci.org/tjmehta/rethinkdb-stream-chunker) [![js-standard-style](https://img.shields.io/badge/code%20style-standard-brightgreen.svg?style=flat)](http://standardjs.com/)
 Chunk RethinkDB protocol stream into query or response buffers
 
 # Installation
