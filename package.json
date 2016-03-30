@@ -1,6 +1,6 @@
 {
   "name": "rethinkdb-stream-chunker",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Chunk RethinkDB protocol stream into query or response buffers",
   "main": "index.js",
   "directories": {
