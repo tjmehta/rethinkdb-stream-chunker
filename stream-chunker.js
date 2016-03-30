@@ -95,8 +95,9 @@ StreamChunker.prototype.passthroughChunk = function (len) {
   if (!state.handshakeComplete) {
     debug('%s: handshake', this.constructor.name, chunkBuf)
     assert(isFunction(this.validateHandshake), '`validateHandshake` not implemented')
-    var validHandshake = this.validateHandshake(chunkBuf)
+    var validHandshake = state.handshakeComplete = this.validateHandshake(chunkBuf)
     if (!validHandshake) {
+      // invalid handshake
       var err = new Error('Invalid handshake!')
       err.data = { state: this.__streamChunkerState }
       this.emit('error', err)

@@ -139,6 +139,7 @@ describe('query stream chunker functional tests', function() {
       handshake.writeUInt32LE(protodef.VersionDummy.Protocol.JSON, 8)
       queryStreamChunker.on('data', function (buf) {
         expect(buf).to.deep.equal(handshake)
+        expect(queryStreamChunker.__streamChunkerState.handshakeComplete).to.be.true
         done()
       }).write(handshake)
     })
