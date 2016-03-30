@@ -131,7 +131,7 @@ describe('query stream chunker functional tests', function() {
   })
 
   describe('handshake validation', function () {
-    it.only('should validate a valid handshake', function (done) {
+    it('should validate a valid handshake', function (done) {
       var queryStreamChunker = createQueryStreamChunker()
       var handshake = new Buffer(12)
       handshake.writeUInt32LE(protodef.VersionDummy.Version.V0_4, 0)
