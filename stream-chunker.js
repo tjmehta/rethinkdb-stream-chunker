@@ -2,9 +2,9 @@ var assert = require('assert')
 
 var debug = require('debug')('rethinkdb-stream-chunker:stream-chunker')
 var defaults = require('101/defaults')
+var exists = require('101/exists')
 var isFunction = require('101/is-function')
 var noop = require('101/noop')
-var r = require('rethinkdb')
 var splice = require('buffer-splice')
 var through2 = require('through2')
 
@@ -25,13 +25,15 @@ var StreamChunker = module.exports = through2.ctor(
 StreamChunker.prototype.init =
 StreamChunker.prototype.reset = function (state) {
   state = state || {}
+  debug('%s: init %o', this.constructor.name, state)
   this.__streamChunkerState = defaults(state, {
     buffer: new Buffer(0),
     chunkLen: null,
     handshakeComplete: false,
-    insertedChunks: []
+    insertedChunks: [],
+    maxChunkLen: Infinity
   })
-  debug('%s: init %o', this.constructor.name, this.__streamChunkerState)
+  debug('%s: state %o', this.constructor.name, this.__streamChunkerState)
 }
 
 /**
@@ -40,7 +42,7 @@ StreamChunker.prototype.reset = function (state) {
 StreamChunker.prototype.transform = function (buf, enc, cb) {
   var state = this.__streamChunkerState
   state.buffer = Buffer.concat([state.buffer, buf])
-  debug('%s: len %o', this.constructor.name, state.buffer.length)
+  debug('%s: len %o %o %o', this.constructor.name, state.buffer.length, buf.length, buf)
   // check if the buffer contains chunk length info
   var chunkLen = this.readChunkLen()
   if (!chunkLen) {
@@ -50,11 +52,10 @@ StreamChunker.prototype.transform = function (buf, enc, cb) {
   if (state.buffer.length < chunkLen) {
     return this.continueBuffering(cb)
   }
-  var i = 0
   while (chunkLen && state.buffer.length >= chunkLen) {
     this.passthroughChunk(state.chunkLen)
   }
-  cb()
+  cb(null, new Buffer(0))
 }
 
 /**
@@ -66,11 +67,23 @@ StreamChunker.prototype.readChunkLen = function (reset) {
     debug('%s: reset chunk len', this.constructor.name)
     delete state.chunkLen
   }
-  state.chunkLen = state.chunkLen ||
-    ((state.buffer.length > 12)
-      ? (12 + state.buffer.readUInt32LE(8))
-      : null)
+  state.chunkLen = exists(state.chunkLen)
+    ? state.chunkLen
+    : ((state.buffer.length > 12)
+        ? (12 + state.buffer.readUInt32LE(8))
+        : null)
   debug('%s: chunk len %o', this.constructor.name, state.chunkLen)
+  if (state.chunkLen > state.maxChunkLen) {
+    debug('%s: chunk len > max len %o %o', this.constructor.name, state.chunkLen, state.maxChunkLen)
+    var err = new Error('Chunk length is greater than max allowed')
+    err.data = {
+      chunkLen: state.chunkLen,
+      maxChunkLen: state.maxChunkLen
+    }
+    this.emit('error', err)
+    this.reset()
+    return
+  }
   return state.chunkLen
 }
 
@@ -115,7 +128,7 @@ StreamChunker.prototype.passthroughChunk = function (len) {
     }
   }
   debug('%s: chunk', this.constructor.name, chunkBuf)
-  chunkLen = this.readChunkLen(true)
+  this.readChunkLen(true)
   this.push(chunkBuf)
 }
 

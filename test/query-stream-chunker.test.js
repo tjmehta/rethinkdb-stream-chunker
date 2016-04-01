@@ -12,7 +12,7 @@ var parseQueryBuffer = require('./fixtures/parse-query-buffer.js')
 var createQueryStreamChunker = require('../index.js').QueryStreamChunker
 var reqlQueries = require('./fixtures/reql-queries.js')
 
-describe('query stream chunker functional tests', function() {
+describe('query stream chunker functional tests', function () {
   beforeEach(function (done) {
     var self = this
     createMockConnection(function (err, connection) {
@@ -128,6 +128,24 @@ describe('query stream chunker functional tests', function() {
     queries.forEach(function (query, i) {
       query.run(self.connection, function () {})
     })
+  })
+
+  it('should error if chunk size greater than max', function (done) {
+    var query = r.table('test-table').get('hey')
+    this.socket.writeStream.pipe(createQueryStreamChunker(true, 1)).on('error', function (err) {
+      try {
+        expect(err).to.exist
+        expect(err.message).to.match(/Chunk length/)
+        expect(err.data).to.deep.equal({
+          chunkLen: 48,
+          maxChunkLen: 1
+        })
+        done()
+      } catch (err) {
+        done(err)
+      }
+    })
+    query.run(this.connection, function () {})
   })
 
   describe('handshake validation', function () {
