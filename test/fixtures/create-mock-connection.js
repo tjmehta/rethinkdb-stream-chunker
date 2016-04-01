@@ -3,7 +3,6 @@ var net = require('net')
 var noop = require('101/noop')
 var r = require('rethinkdb')
 var shimmer = require('shimmer')
-var through2 = require('through2')
 
 var MockSocket = require('./mock-socket.js')
 

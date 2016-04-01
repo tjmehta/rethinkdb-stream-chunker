@@ -8,15 +8,17 @@ var StreamChunker = require('./stream-chunker.js')
 
 module.exports = ResponseStreamChunker
 
-function ResponseStreamChunker (handshakeComplete) {
+function ResponseStreamChunker (handshakeComplete, maxChunkLen) {
   if (!(this instanceof ResponseStreamChunker)) {
-    return new ResponseStreamChunker(handshakeComplete)
+    return new ResponseStreamChunker(handshakeComplete, maxChunkLen)
   }
+  debug('%s: constructor args handshakeComplete:%o, maxChunkLen:%o', handshakeComplete, maxChunkLen)
   StreamChunker.call(this)
   var handshakeLen = 8
   this.init({
+    chunkLen: handshakeComplete ? null : handshakeLen,
     handshakeComplete: handshakeComplete,
-    chunkLen: handshakeComplete ? null : handshakeLen
+    maxChunkLen: maxChunkLen
   })
 }
 
@@ -29,6 +31,7 @@ util.inherits(ResponseStreamChunker, StreamChunker)
  */
 ResponseStreamChunker.prototype.validateHandshake = function (buf) {
   var str = buf.toString()
+  debug('%s: validate handshake "%s"', this.constructor.name, str)
   return ~str.indexOf('SUCCESS')
 }
 

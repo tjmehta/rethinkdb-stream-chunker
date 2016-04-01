@@ -1,9 +1,7 @@
-var beforeEach = global.beforeEach
 var describe = global.describe
 var it = global.it
 
 var expect = require('chai').expect
-var r = require('rethinkdb')
 
 var createResChunk = require('./fixtures/create-res-chunk.js')
 var createResponseStreamChunker = require('../index.js').ResponseStreamChunker
@@ -13,9 +11,8 @@ function parseResBuffer (responseBuf) {
   return ast
 }
 
-describe('response stream chunker functional tests', function() {
+describe('response stream chunker functional tests', function () {
   it('should chunk a rethinkdb response stream (single response)', function (done) {
-    var self = this
     var res = {
       t: 16,
       r: 'blah blah blah error',
@@ -43,7 +40,6 @@ describe('response stream chunker functional tests', function() {
   })
 
   it('should chunk a rethinkdb resposnse stream (partial responses)', function (done) {
-    var self = this
     var resArr = [{
       t: 16,
       r: 'error0',
@@ -85,7 +81,6 @@ describe('response stream chunker functional tests', function() {
   })
 
   it('should chunk a rethinkdb resposnse stream (multiple responses)', function (done) {
-    var self = this
     var resArr = [{
       t: 16,
       r: 'error0',
@@ -123,7 +118,6 @@ describe('response stream chunker functional tests', function() {
   })
 
   it('should allow insertion of responses (mid stream)', function (done) {
-    var self = this
     var resArr = [{
       t: 16,
       r: ['error0'],
@@ -174,7 +168,6 @@ describe('response stream chunker functional tests', function() {
   })
 
   it('should allow insertion of responses (at chunk break)', function (done) {
-    var self = this
     var resArr = [{
       t: 16,
       r: ['error0'],
@@ -221,6 +214,38 @@ describe('response stream chunker functional tests', function() {
       if (i === 7) { // post second-chunk
         responseStreamChunker.insertClientError(new Buffer(8), insertedRes.r[0], [])
       }
+    })
+  })
+
+  it('should error if chunk size greater than max', function (done) {
+    var res = {
+      t: 16,
+      r: 'blah blah blah error',
+      b: []
+    }
+    var responseStreamChunker = createResponseStreamChunker(true, 1)
+    responseStreamChunker.on('error', function (err) {
+      try {
+        expect(err).to.exist
+        expect(err.message).to.match(/Chunk length/)
+        expect(err.data).to.deep.equal({
+          chunkLen: 54,
+          maxChunkLen: 1
+        })
+        done()
+      } catch (err) {
+        done(err)
+      }
+    })
+    var resChunk = createResChunk(res)
+    var partialChunks = [
+      resChunk.slice(0, 3),
+      resChunk.slice(3, 6),
+      resChunk.slice(6, 9),
+      resChunk.slice(9)
+    ]
+    partialChunks.forEach(function (data) {
+      responseStreamChunker.write(data)
     })
   })
 
