@@ -6,15 +6,12 @@ var expect = require('chai').expect
 var r = require('rethinkdb')
 
 var createMockConnection = require('./fixtures/create-mock-connection.js')
-var createQueryChunk = require('./fixtures/create-query-chunk.js')
 var createStreamChunker = require('../stream-chunker.js')
 var createResChunk = require('./fixtures/create-res-chunk.js')
 var parseQueryBuffer = require('./fixtures/parse-query-buffer.js')
 var QueryStreamChunker = require('../index.js').QueryStreamChunker
-var reqlQueries = require('./fixtures/reql-queries.js')
 
-
-describe('query and response tests', function() {
+describe('query and response tests', function () {
   beforeEach(function (done) {
     var self = this
     createMockConnection(function (err, connection) {
@@ -53,7 +50,7 @@ describe('query and response tests', function() {
     })
   })
 
-  it('should create a base stream chunker', function(done) {
+  it('should create a base stream chunker', function (done) {
     // covers base constructor init call case
     var s = createStreamChunker()
     s.validateHandshake = function () {
