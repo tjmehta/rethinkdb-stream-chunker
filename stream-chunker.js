@@ -69,7 +69,7 @@ StreamChunker.prototype.readChunkLen = function (reset) {
   }
   state.chunkLen = exists(state.chunkLen)
     ? state.chunkLen
-    : ((state.buffer.length > 12)
+    : ((state.buffer.length >= 12)
         ? (12 + state.buffer.readUInt32LE(8))
         : null)
   debug('%s: chunk len %o', this.constructor.name, state.chunkLen)
