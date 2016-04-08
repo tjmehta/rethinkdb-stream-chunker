@@ -1,10 +1,19 @@
+require('./fixtures/load-env.js')
+
+var afterEach = global.afterEach
+var beforeEach = global.beforeEach
 var describe = global.describe
 var it = global.it
 
+var net = require('net')
+
 var expect = require('chai').expect
+var last = require('101/last')
+var proxyquire = require('proxyquire')
+var shimmer = require('shimmer')
+var through2 = require('through2')
 
 var createResChunk = require('./fixtures/create-res-chunk.js')
-var createResponseStreamChunker = require('../index.js').ResponseStreamChunker
 
 function parseResBuffer (responseBuf) {
   var ast = JSON.parse(responseBuf.slice(12, responseBuf.length).toString())
@@ -12,6 +21,26 @@ function parseResBuffer (responseBuf) {
 }
 
 describe('response stream chunker functional tests', function () {
+  describe('protocol v0.4 tests', function () {
+    proxyquire.noCallThru()
+    proxyquire.noPreserveCache()
+    var rethinkdb = require('./fixtures/rethinkdb@2.2.2')
+    var protodef = require('./fixtures/rethinkdb@2.2.2/proto-def.js')
+    var createResponseStreamChunker = proxyquire('../response-stream-chunker.js', {
+      'rethinkdb': rethinkdb,
+      'rethinkdb/proto-def': protodef
+    })
+    runTests(rethinkdb, protodef, createResponseStreamChunker)
+  })
+  describe('protocol v1.0 tests', function () {
+    runTests(
+      require('rethinkdb'),
+      require('rethinkdb/proto-def'),
+      require('../response-stream-chunker.js'))
+  })
+})
+
+function runTests (r, protodef, createResponseStreamChunker) {
   it('should chunk a rethinkdb response stream (single response)', function (done) {
     var res = {
       t: 16,
@@ -228,7 +257,7 @@ describe('response stream chunker functional tests', function () {
       try {
         expect(err).to.exist
         expect(err.message).to.match(/Chunk length/)
-        expect(err.data).to.deep.equal({
+        expect(err.data.state).to.deep.contain({
           chunkLen: 54,
           maxChunkLen: 1
         })
@@ -250,27 +279,136 @@ describe('response stream chunker functional tests', function () {
   })
 
   describe('handshake validation', function () {
-    it('should validate a valid handshake', function (done) {
-      var responseStreamChunker = createResponseStreamChunker()
-      var handshake = new Buffer(8)
-      handshake.fill(0)
-      handshake.write('SUCCESS')
-      responseStreamChunker.on('data', function (buf) {
-        expect(buf).to.deep.equal(handshake)
+    describe('successful (using db)', function () {
+      beforeEach(function (done) {
+        var self = this
+        shimmer.wrap(net, 'connect', function (o) {
+          return function () {
+            var socket = self.socket = o.apply(this, arguments)
+            // pipe socket to responseChunker
+            self.chunker = createResponseStreamChunker()
+            socket.pipe(self.chunker)
+            return socket
+          }
+        })
+        var opts = {
+          host: process.env.RETHINKDB_HOST
+        }
+        r.connect(opts, function (err, conn) {
+          if (err) { console.error(err) }
+          self.conn = conn
+        })
         done()
-      }).write(handshake)
+        shimmer.unwrap(net, 'connect')
+      })
+      afterEach(function (done) {
+        if (this.conn) {
+          this.conn.close()
+        }
+        done()
+      })
+
+      if (protodef.VersionDummy.Version.V1_0) {
+        // V1_0 specific tests
+
+        it('should validate a valid handshake V1_0', function (done) {
+          var state = this.chunker.__streamChunkerState
+          this.chunker.on('data', function (buf) {
+            // chunk assertions
+            var lastZero = last(state.handshakeZeroIndexes)
+            expect(buf[lastZero]).to.equal(0)
+            expect(buf.length).to.equal(lastZero + 1)
+            if (state.handshakeComplete) {
+              done()
+            }
+          })
+        })
+
+        it('should invalidate a invalid handshake V1_0 (json.success=false)', function (done) {
+          var state = this.chunker.__streamChunkerState
+          var chunker2 = createResponseStreamChunker()
+          this.chunker
+            .pipe(through2(function (buf, enc, cb) {
+              var json
+              if (state.handshakeComplete) {
+                try {
+                  json = JSON.parse(buf.slice(0, -1).toString())
+                  json.success = false
+                  buf = new Buffer(JSON.stringify(json) + '\0')
+                } catch (err) {
+                  done(err)
+                }
+              }
+              cb(null, buf)
+            }))
+            .pipe(chunker2)
+          chunker2.on('error', function (err) {
+            expect(err).to.be.an.instanceOf(Error)
+            expect(err.message).to.match(/Invalid handshake/)
+            done()
+          })
+        })
+
+        return
+      }
+
+      // V0_4 specific tests
+
+      it('should validate a valid handshake', function (done) {
+        this.chunker.on('data', function (buf) {
+          expect(buf[buf.length - 1]).to.equal(0)
+          expect(buf.toString()).to.equal('SUCCESS\0')
+          done()
+        })
+      })
     })
 
-    it('should invalidate a invalid handshake', function (done) {
-      var responseStreamChunker = createResponseStreamChunker()
-      var handshake = new Buffer(8)
-      handshake.fill(0)
-      handshake.write('ERROR')
-      responseStreamChunker.on('error', function (err) {
-        expect(err).to.be.an.instanceOf(Error)
-        expect(err.message).to.match(/Invalid handshake/)
-        done()
-      }).write(handshake)
+    describe('mock failures', function () {
+      if (protodef.VersionDummy.Version.V1_0) {
+        // V1_0 specific tests
+
+        it('should invalidate a invalid handshake', function (done) {
+          var responseStreamChunker = createResponseStreamChunker()
+          var handshake = new Buffer(8)
+          handshake.fill(0)
+          handshake.write('ERROR\0')
+          responseStreamChunker.on('error', function (err) {
+            expect(err).to.be.an.instanceOf(Error)
+            expect(err.message).to.match(/Invalid handshake/)
+            done()
+          }).write(handshake)
+        })
+
+        it('should invalidate a invalid handshake (max length)', function (done) {
+          var responseStreamChunker = createResponseStreamChunker()
+          var handshake = new Buffer(2000)
+          handshake.fill(1)
+          handshake.write('\0', 1999)
+          responseStreamChunker.on('error', function (err) {
+            expect(err).to.be.an.instanceOf(Error)
+            console.log(err.message)
+            expect(err.message).to.match(/Invalid handshake/)
+            expect(err.message).to.match(/max length/)
+            done()
+          }).write(handshake)
+        })
+
+        return
+      }
+
+      // V0_4 specific tests
+
+      it('should invalidate a invalid handshake', function (done) {
+        var responseStreamChunker = createResponseStreamChunker()
+        var handshake = new Buffer(8)
+        handshake.fill(0)
+        handshake.write('ERROR\0')
+        responseStreamChunker.on('error', function (err) {
+          expect(err).to.be.an.instanceOf(Error)
+          expect(err.message).to.match(/Invalid handshake/)
+          done()
+        }).write(handshake)
+      })
     })
   })
-})
+}

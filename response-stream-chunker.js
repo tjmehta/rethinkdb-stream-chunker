@@ -3,8 +3,11 @@ var util = require('util')
 
 var debug = require('debug')('rethinkdb-stream-chunker:response-stream-chunker')
 var isString = require('101/is-string')
+var protodef = require('rethinkdb/proto-def')
 
 var StreamChunker = require('./stream-chunker.js')
+
+var isV1_0 = protodef.VersionDummy.Version.V1_0
 
 module.exports = ResponseStreamChunker
 
@@ -14,10 +17,10 @@ function ResponseStreamChunker (handshakeComplete, maxChunkLen) {
   }
   debug('%s: constructor args handshakeComplete:%o, maxChunkLen:%o', handshakeComplete, maxChunkLen)
   StreamChunker.call(this)
-  var handshakeLen = 8
   this.init({
-    chunkLen: handshakeComplete ? null : handshakeLen,
+    chunkLen: null,
     handshakeComplete: handshakeComplete,
+    handshakeChunks: isV1_0 ? 3 : 1,
     maxChunkLen: maxChunkLen
   })
 }
@@ -29,10 +32,32 @@ util.inherits(ResponseStreamChunker, StreamChunker)
  * @param  {Buffer}   buf handshake buffer
  * @return {Boolean}  validHandshake
  */
-ResponseStreamChunker.prototype.validateHandshake = function (buf) {
-  var str = buf.toString()
-  debug('%s: validate handshake "%s"', this.constructor.name, str)
-  return ~str.indexOf('SUCCESS')
+ResponseStreamChunker.prototype.validateHandshakeChunk = function (buf) {
+  var state = this.__streamChunkerState
+  var str
+  if (isV1_0) {
+    str = buf.toString()
+    debug('%s: handshake str "%o"', this.constructor.name, json)
+    try {
+      var json = JSON.parse(str.slice(0, -1))
+      state.handshakeChunksCount++
+      if (state.handshakeZeroIndexes.length === state.handshakeChunks) {
+        state.handshakeComplete = true
+      }
+      var valid = json.success
+      if (!valid) {
+        debug('%s: invalid handshake json.success "%o"', this.constructor.name, json)
+      }
+      return valid
+    } catch (err) {
+      debug('%s: invalid json handshake "%s": %s', this.constructor.name, str, err.message)
+      return false
+    }
+  } else {
+    str = buf.toString()
+    debug('%s: validate handshake "%s"', this.constructor.name, str)
+    return ~str.indexOf('SUCCESS')
+  }
 }
 
 /**
