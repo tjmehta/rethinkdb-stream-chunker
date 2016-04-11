@@ -56,7 +56,8 @@ ResponseStreamChunker.prototype.validateHandshakeChunk = function (buf) {
   } else {
     str = buf.toString()
     debug('%s: validate handshake "%s"', this.constructor.name, str)
-    return ~str.indexOf('SUCCESS')
+    state.handshakeComplete = true
+    return str === 'SUCCESS\0'
   }
 }
 
