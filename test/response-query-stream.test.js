@@ -48,11 +48,13 @@ function runTests (r, protodef, createResponseStreamChunker) {
       b: []
     }
     var responseStreamChunker = createResponseStreamChunker(true)
-    responseStreamChunker.on('data', function (resBuf) {
+    responseStreamChunker.on('data', function dataHandler (resBuf) {
       try {
         expect(parseResBuffer(resBuf)).to.deep.equal(res)
+        responseStreamChunker.removeListener('data', dataHandler)
         done()
       } catch (err) {
+        responseStreamChunker.removeListener('data', dataHandler)
         done(err)
       }
     })
@@ -84,14 +86,16 @@ function runTests (r, protodef, createResponseStreamChunker) {
     }]
     var chunkCount = 0
     var responseStreamChunker = createResponseStreamChunker(true)
-    responseStreamChunker.on('data', function (resBuf) {
+    responseStreamChunker.on('data', function dataHandler (resBuf) {
       try {
         expect(parseResBuffer(resBuf)).to.deep.equal(resArr[chunkCount])
         chunkCount++
         if (chunkCount === resArr.length) {
+          responseStreamChunker.removeListener('data', dataHandler)
           done()
         }
       } catch (err) {
+        responseStreamChunker.removeListener('data', dataHandler)
         done(err)
       }
     })
@@ -125,14 +129,16 @@ function runTests (r, protodef, createResponseStreamChunker) {
     }]
     var chunkCount = 0
     var responseStreamChunker = createResponseStreamChunker(true)
-    responseStreamChunker.on('data', function (resBuf) {
+    responseStreamChunker.on('data', function dataHandler (resBuf) {
       try {
         expect(parseResBuffer(resBuf)).to.deep.equal(resArr[chunkCount])
         chunkCount++
         if (chunkCount === resArr.length) {
+          responseStreamChunker.removeListener('data', dataHandler)
           done()
         }
       } catch (err) {
+        responseStreamChunker.removeListener('data', dataHandler)
         done(err)
       }
     })
@@ -168,14 +174,16 @@ function runTests (r, protodef, createResponseStreamChunker) {
     var expectedResArr = resArr.slice(0, 1).concat(insertedRes).concat(resArr.slice(1))
     var chunkCount = 0
     var responseStreamChunker = createResponseStreamChunker(true)
-    responseStreamChunker.on('data', function (resBuf) {
+    responseStreamChunker.on('data', function dataHandler (resBuf) {
       try {
         expect(parseResBuffer(resBuf)).to.deep.equal(expectedResArr[chunkCount])
         chunkCount++
         if (chunkCount === expectedResArr.length) {
+          responseStreamChunker.removeListener('data', dataHandler)
           done()
         }
       } catch (err) {
+        responseStreamChunker.removeListener('data', dataHandler)
         done(err)
       }
     })
@@ -218,14 +226,16 @@ function runTests (r, protodef, createResponseStreamChunker) {
     var expectedResArr = resArr.slice(0, 2).concat(insertedRes).concat(resArr.slice(2))
     var chunkCount = 0
     var responseStreamChunker = createResponseStreamChunker(true)
-    responseStreamChunker.on('data', function (resBuf) {
+    responseStreamChunker.on('data', function dataHandler (resBuf) {
       try {
         expect(parseResBuffer(resBuf)).to.deep.equal(expectedResArr[chunkCount])
         chunkCount++
         if (chunkCount === resArr.length + 1) {
+          responseStreamChunker.removeListener('data', dataHandler)
           done()
         }
       } catch (err) {
+        responseStreamChunker.removeListener('data', dataHandler)
         done(err)
       }
     })
@@ -253,7 +263,7 @@ function runTests (r, protodef, createResponseStreamChunker) {
       b: []
     }
     var responseStreamChunker = createResponseStreamChunker(true, 1)
-    responseStreamChunker.on('error', function (err) {
+    responseStreamChunker.on('error', function errorHandler (err) {
       try {
         expect(err).to.exist
         expect(err.message).to.match(/Chunk length/)
@@ -261,8 +271,10 @@ function runTests (r, protodef, createResponseStreamChunker) {
           chunkLen: 54,
           maxChunkLen: 1
         })
+        responseStreamChunker.removeListener('error', errorHandler)
         done()
       } catch (err) {
+        responseStreamChunker.removeListener('error', errorHandler)
         done(err)
       }
     })
@@ -312,39 +324,46 @@ function runTests (r, protodef, createResponseStreamChunker) {
         // V1_0 specific tests
 
         it('should validate a valid handshake V1_0', function (done) {
+          var self = this
           var state = this.chunker.__streamChunkerState
-          this.chunker.on('data', function (buf) {
+          this.chunker.on('data', function dataHandler (buf) {
             // chunk assertions
             var lastZero = last(state.handshakeZeroIndexes)
             expect(buf[lastZero]).to.equal(0)
             expect(buf.length).to.equal(lastZero + 1)
             if (state.handshakeComplete) {
+              self.chunker.removeListener('data', dataHandler)
               done()
             }
           })
         })
 
         it('should invalidate a invalid handshake V1_0 (json.success=false)', function (done) {
+          var self = this
           var state = this.chunker.__streamChunkerState
           var chunker2 = createResponseStreamChunker()
-          this.chunker
-            .pipe(through2(function (buf, enc, cb) {
-              var json
-              if (state.handshakeComplete) {
-                try {
-                  json = JSON.parse(buf.slice(0, -1).toString())
-                  json.success = false
-                  buf = new Buffer(JSON.stringify(json) + '\0')
-                } catch (err) {
-                  done(err)
-                }
+          var expectStream = through2(function (buf, enc, cb) {
+            var json
+            if (state.handshakeComplete) {
+              try {
+                json = JSON.parse(buf.slice(0, -1).toString())
+                json.success = false
+                buf = new Buffer(JSON.stringify(json) + '\0')
+              } catch (err) {
+                done(err)
               }
-              cb(null, buf)
-            }))
+            }
+            cb(null, buf)
+          })
+          this.chunker
+            .pipe(expectStream)
             .pipe(chunker2)
-          chunker2.on('error', function (err) {
+          chunker2.on('error', function errorHandler (err) {
             expect(err).to.be.an.instanceOf(Error)
             expect(err.message).to.match(/Invalid handshake/)
+            self.chunker.unpipe(expectStream)
+            expectStream.unpipe(chunker2)
+            chunker2.removeListener('error', errorHandler)
             done()
           })
         })
@@ -355,9 +374,11 @@ function runTests (r, protodef, createResponseStreamChunker) {
       // V0_4 specific tests
 
       it('should validate a valid handshake', function (done) {
-        this.chunker.on('data', function (buf) {
+        var self = this
+        this.chunker.on('data', function dataHandler (buf) {
           expect(buf[buf.length - 1]).to.equal(0)
           expect(buf.toString()).to.equal('SUCCESS\0')
+          self.chunker.removeListener('data', dataHandler)
           done()
         })
       })
@@ -372,9 +393,10 @@ function runTests (r, protodef, createResponseStreamChunker) {
           var handshake = new Buffer(8)
           handshake.fill(0)
           handshake.write('ERROR\0')
-          responseStreamChunker.on('error', function (err) {
+          responseStreamChunker.on('error', function errorHandler (err) {
             expect(err).to.be.an.instanceOf(Error)
             expect(err.message).to.match(/Invalid handshake/)
+            responseStreamChunker.removeListener('error', errorHandler)
             done()
           }).write(handshake)
         })
@@ -384,11 +406,11 @@ function runTests (r, protodef, createResponseStreamChunker) {
           var handshake = new Buffer(2000)
           handshake.fill(1)
           handshake.write('\0', 1999)
-          responseStreamChunker.on('error', function (err) {
+          responseStreamChunker.on('error', function errorHandler (err) {
             expect(err).to.be.an.instanceOf(Error)
-            console.log(err.message)
             expect(err.message).to.match(/Invalid handshake/)
             expect(err.message).to.match(/max length/)
+            responseStreamChunker.removeListener('error', errorHandler)
             done()
           }).write(handshake)
         })
@@ -403,9 +425,10 @@ function runTests (r, protodef, createResponseStreamChunker) {
         var handshake = new Buffer(8)
         handshake.fill(0)
         handshake.write('ERROR\0')
-        responseStreamChunker.on('error', function (err) {
+        responseStreamChunker.on('error', function errorHandler (err) {
           expect(err).to.be.an.instanceOf(Error)
           expect(err.message).to.match(/Invalid handshake/)
+          responseStreamChunker.removeListener('error', errorHandler)
           done()
         }).write(handshake)
       })
