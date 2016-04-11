@@ -207,7 +207,7 @@ StreamChunker.prototype.insertAst = function (tokenBuf, ast, cb) {
 StreamChunker.prototype.emitErr = function (msg) {
   var err = new Error(msg)
   err.data = { state: {} }
-  Object.assign(err.data.state, this.__streamChunkerState) // copy over
+  assign(err.data.state, this.__streamChunkerState) // copy over
   this.emit('error', err)
   this.reset()
 }
