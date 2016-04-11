@@ -34,10 +34,9 @@ util.inherits(ResponseStreamChunker, StreamChunker)
  */
 ResponseStreamChunker.prototype.validateHandshakeChunk = function (buf) {
   var state = this.__streamChunkerState
-  var str
+  var str = buf.toString()
   if (isV1_0) {
-    str = buf.toString()
-    debug('%s: handshake str "%o"', this.constructor.name, json)
+    debug('%s: handshake str "%o"', this.constructor.name, str)
     try {
       var json = JSON.parse(str.slice(0, -1))
       state.handshakeChunksCount++
@@ -54,7 +53,6 @@ ResponseStreamChunker.prototype.validateHandshakeChunk = function (buf) {
       return false
     }
   } else {
-    str = buf.toString()
     debug('%s: validate handshake "%s"', this.constructor.name, str)
     state.handshakeComplete = true
     return str === 'SUCCESS\0'
