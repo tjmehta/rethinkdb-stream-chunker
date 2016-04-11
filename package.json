@@ -31,10 +31,12 @@
   },
   "homepage": "https://github.com/tjmehta/rethinkdb-stream-chunker",
   "devDependencies": {
+    "bluebird": "^3.3.4",
     "chai": "^3.5.0",
     "istanbul": "^0.4.2",
     "mocha": "^2.4.5",
-    "rethinkdb": "^2.2.2",
+    "proxyquire": "^1.7.4",
+    "rethinkdb": "^2.3.0",
     "shimmer": "^1.1.0",
     "sinon": "^1.17.3"
   },
@@ -42,6 +44,7 @@
     "101": "^1.5.0",
     "buffer-splice": "^1.0.0",
     "debug": "^2.2.0",
+    "is-json": "^2.0.0",
     "through2": "^2.0.1"
   }
 }

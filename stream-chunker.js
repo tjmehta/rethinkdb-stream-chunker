@@ -1,8 +1,11 @@
 var assert = require('assert')
 
+var assign = require('101/assign')
 var debug = require('debug')('rethinkdb-stream-chunker:stream-chunker')
 var defaults = require('101/defaults')
+var equals = require('101/equals')
 var exists = require('101/exists')
+var findIndex = require('101/find-index')
 var isFunction = require('101/is-function')
 var noop = require('101/noop')
 var splice = require('buffer-splice')
@@ -20,20 +23,34 @@ var StreamChunker = module.exports = through2.ctor(
   })
 
 /**
- * initialize or reset the stream chunker state (`__streamChunkerState`)
+ * initialize the stream chunker state (`__streamChunkerState`)
  */
-StreamChunker.prototype.init =
-StreamChunker.prototype.reset = function (state) {
+StreamChunker.prototype.init = function (state) {
   state = state || {}
   debug('%s: init %o', this.constructor.name, state)
   this.__streamChunkerState = defaults(state, {
     buffer: new Buffer(0),
     chunkLen: null,
     handshakeComplete: false,
+    handshakeZeroIndexes: [],
     insertedChunks: [],
-    maxChunkLen: Infinity
+    maxChunkLen: Infinity,
+    maxHandshakeChunkLen: 500 // max known is ~130
   })
   debug('%s: state %o', this.constructor.name, this.__streamChunkerState)
+}
+
+/**
+ * reset the stream chunker state (`__streamChunkerState`), free mem
+ */
+StreamChunker.prototype.reset = function () {
+  assign(this.__streamChunkerState, {
+    buffer: new Buffer(0),
+    chunkLen: null,
+    insertedChunks: []
+  })
+  assert(isFunction(this.readHandshakeChunkLen), '`validateHandshakeChunk` not implemented')
+  assert(isFunction(this.validateHandshakeChunk), '`validateHandshakeChunk` not implemented')
 }
 
 /**
@@ -44,15 +61,15 @@ StreamChunker.prototype.transform = function (buf, enc, cb) {
   state.buffer = Buffer.concat([state.buffer, buf])
   debug('%s: len %o %o %o', this.constructor.name, state.buffer.length, buf.length, buf)
   // check if the buffer contains chunk length info
-  var chunkLen = this.readChunkLen()
-  if (!chunkLen) {
+  this.readChunkLen()
+  if (!state.chunkLen) {
     return this.continueBuffering(cb)
   }
   // check if the buffer is contains a full chunk
-  if (state.buffer.length < chunkLen) {
+  if (state.buffer.length < state.chunkLen) {
     return this.continueBuffering(cb)
   }
-  while (chunkLen && state.buffer.length >= chunkLen) {
+  while (state.chunkLen && state.buffer.length >= state.chunkLen) {
     this.passthroughChunk(state.chunkLen)
   }
   cb(null, new Buffer(0))
@@ -67,23 +84,46 @@ StreamChunker.prototype.readChunkLen = function (reset) {
     debug('%s: reset chunk len', this.constructor.name)
     delete state.chunkLen
   }
-  state.chunkLen = exists(state.chunkLen)
-    ? state.chunkLen
-    : ((state.buffer.length >= 12)
-        ? (12 + state.buffer.readUInt32LE(8))
-        : null)
+  if (exists(state.chunkLen)) {
+    debug('%s: still chunk len %o', this.constructor.name, state.chunkLen)
+    return state.chunkLen
+  }
+  if (!state.handshakeComplete) {
+    this.readHandshakeChunkLen()
+    if (state.chunkLen > state.maxHandshakeChunkLen) {
+      this.emitErr('Invalid handshake (max length)!')
+      return
+    }
+    return state.chunkLen
+  }
+  state.chunkLen = (state.buffer.length >= 12)
+    ? (12 + state.buffer.readUInt32LE(8))
+    : null
   debug('%s: chunk len %o', this.constructor.name, state.chunkLen)
   if (state.chunkLen > state.maxChunkLen) {
     debug('%s: chunk len > max len %o %o', this.constructor.name, state.chunkLen, state.maxChunkLen)
-    var err = new Error('Chunk length is greater than max allowed')
-    err.data = {
-      chunkLen: state.chunkLen,
-      maxChunkLen: state.maxChunkLen
-    }
-    this.emit('error', err)
-    this.reset()
+    this.emitErr('Chunk length is greater than max allowed')
     return
   }
+  return state.chunkLen
+}
+
+/**
+ * read handshake chunk length from the state buffer
+ * only used w/ V1.0, bc w/ v0.4 initial chunkLen is provided
+ */
+StreamChunker.prototype.readHandshakeChunkLen = function () {
+  var state = this.__streamChunkerState
+  var handshakeZeroIndexes = state.handshakeZeroIndexes
+  debug('%s: handshake buffer len %o', this.constructor.name, state.buffer.length)
+  var zeroIndex = findIndex(state.buffer, equals(0))
+  if (!~zeroIndex) {
+    debug('%s: handshake buffer continue buffering %o', this.constructor.name, state.buffer.length)
+    return null
+  }
+  handshakeZeroIndexes.push(zeroIndex)
+  debug('%s: handshake chunk len found %o', this.constructor.name, handshakeZeroIndexes)
+  state.chunkLen = (zeroIndex + 1) // +1, index to length
   return state.chunkLen
 }
 
@@ -106,15 +146,11 @@ StreamChunker.prototype.passthroughChunk = function (len) {
   var chunkBuf = splice(state, 0, len)
   // passthrough query
   if (!state.handshakeComplete) {
-    debug('%s: handshake', this.constructor.name, chunkBuf)
-    assert(isFunction(this.validateHandshake), '`validateHandshake` not implemented')
-    var validHandshake = state.handshakeComplete = this.validateHandshake(chunkBuf)
+    debug('%s: handshake %o %o', this.constructor.name, chunkBuf, chunkBuf.length)
+    var validHandshake = this.validateHandshakeChunk(chunkBuf)
     if (!validHandshake) {
       // invalid handshake
-      var err = new Error('Invalid handshake!')
-      err.data = { state: this.__streamChunkerState }
-      this.emit('error', err)
-      this.reset()
+      this.emitErr('Invalid handshake!')
       return
     }
   }
@@ -166,6 +202,14 @@ StreamChunker.prototype.insertAst = function (tokenBuf, ast, cb) {
   lenBuf.writeUInt32LE(str.length, 0)
   var contentBuf = new Buffer(str)
   return this.insertChunk(Buffer.concat([tokenBuf, lenBuf, contentBuf]), cb)
+}
+
+StreamChunker.prototype.emitErr = function (msg) {
+  var err = new Error(msg)
+  err.data = { state: {} }
+  assign(err.data.state, this.__streamChunkerState) // copy over
+  this.emit('error', err)
+  this.reset()
 }
 
 /**
