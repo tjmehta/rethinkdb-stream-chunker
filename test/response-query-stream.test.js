@@ -8,7 +8,6 @@ var it = global.it
 var net = require('net')
 
 var expect = require('chai').expect
-var last = require('101/last')
 var proxyquire = require('proxyquire')
 var shimmer = require('shimmer')
 var through2 = require('through2')
@@ -326,9 +325,11 @@ function runTests (r, protodef, createResponseStreamChunker) {
         it('should validate a valid handshake V1_0', function (done) {
           var self = this
           var state = this.chunker.__streamChunkerState
+          var count = 0
           this.chunker.on('data', function dataHandler (buf) {
             // chunk assertions
-            var lastZero = last(state.handshakeZeroIndexes)
+            var lastZero = state.handshakeZeroIndexes[count]
+            count++
             expect(buf[lastZero]).to.equal(0)
             expect(buf.length).to.equal(lastZero + 1)
             if (state.handshakeComplete) {
