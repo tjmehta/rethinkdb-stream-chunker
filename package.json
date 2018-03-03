@@ -35,7 +35,7 @@
     "chai": "^3.5.0",
     "istanbul": "^0.4.2",
     "mocha": "^3.2.0",
-    "proxyquire": "^1.7.4",
+    "proxyquire": "^2.0.0",
     "rethinkdb": "^2.3.0",
     "shimmer": "^1.1.0",
     "sinon": "^1.17.3"
